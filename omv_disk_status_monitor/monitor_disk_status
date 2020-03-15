@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+
+set -e
+
+function ts() {
+  printf '%(%F %T)T'
+}
+
+function log() {
+  echo $(ts) $@
+}
+
+function get_disks() {
+ ls /dev/sd?
+#  ls ./test/*
+}
+
+function get_disk_state() {
+  # https://stackoverflow.com/a/16675391
+  hdparm -C "$1" | grep -Po 'drive state is:\s*\K.*'
+}
+
+
+declare -A disk_state
+
+function process_single_disk() {
+  local disk=$1
+  local current_state=$(get_disk_state "$disk")
+  local previous_state=${disk_state[$disk]}
+  if [ -z "$previous_state" ]; then
+    log Detected new disk [$disk] in state [$current_state]
+    disk_state[$disk]=${current_state}
+  elif [ -z "$current_state" ]; then
+    # We shouldn't usually get here, as cleanup_removed_disks should handle this case
+    log Disk [$disk] in previous state [$previous_state] was removed
+    unset disk_state[$disk]
+  elif [[ "$previous_state" != "$current_state" ]]; then
+    log Disk [$disk] changed state from [$previous_state] to [$current_state]
+    disk_state[$disk]=${current_state}
+  fi
+}
+
+function cleanup_removed_disks() {
+  for disk in "${!disk_state[@]}"; do
+    if [ ! -e "$disk" ]; then
+      local previous_state=${disk_state[$disk]}
+      log Disk [$disk] in previous state [$previous_state] was removed
+      unset disk_state[$disk]
+    fi
+  done
+}
+
+function process_all_disks() {
+  cleanup_removed_disks
+  local disks
+  mapfile -t disks < <(get_disks)
+  for disk in "${disks[@]}";
+  do
+    process_single_disk $disk
+  done
+}
+
+log Monitoring script started
+
+while true; do
+  process_all_disks
+  sleep 10
+done
+
+log Monitoring script finished

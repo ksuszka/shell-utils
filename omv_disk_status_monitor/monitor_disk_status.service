@@ -1,0 +1,11 @@
+[Unit]
+Description=Monitors disk spinning status
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=1
+ExecStart=/usr/sbin/monitor_disk_status
+
+[Install]
+WantedBy=multi-user.target
